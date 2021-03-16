@@ -18,6 +18,7 @@ namespace ActivityGhosts
         private Keys loadKey;
         public static PointF initialGPSPoint;
         public static bool debug;
+        private const string LOG_FILE = @".\Scripts\ActivityGhosts.log";
 
         public ActivityGhosts()
         {
@@ -42,17 +43,20 @@ namespace ActivityGhosts
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == loadKey)
+            {
+                System.IO.File.Delete(LOG_FILE);
                 LoadGhosts();
+            }
         }
 
         private void OnAbort(object sender, EventArgs e)
         {
             KeyDown -= OnKeyDown;
             Tick -= OnTick;
-            DeleteAll();
+            DeleteGhosts();
         }
 
-        private void DeleteAll()
+        private void DeleteGhosts()
         {
             foreach (Ghost g in ghosts)
                 g.Delete();
@@ -61,7 +65,7 @@ namespace ActivityGhosts
 
         private void LoadGhosts()
         {
-            DeleteAll();
+            DeleteGhosts();
             string ghostsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Rockstar Games\\GTA V\\Ghosts";
             if (Directory.Exists(ghostsPath))
             {
@@ -75,8 +79,9 @@ namespace ActivityGhosts
                     {
                         if (Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
                         {
-                            ghosts.Add(new Ghost(points));
-                            if (debug) Log($"Loaded ghost from {file.Name}");
+                            ghosts.Add(new Ghost(Path.GetFileNameWithoutExtension(file.Name), points));
+                            if (debug)
+                                Log($"Loaded ghost from {file.Name}");
                         }
                     }
                 }
@@ -97,13 +102,14 @@ namespace ActivityGhosts
 
         public static void Log(string message)
         {
-            using (StreamWriter sw = new StreamWriter(@".\Scripts\ActivityGhosts.log", true))
+            using (StreamWriter sw = new StreamWriter(LOG_FILE, true))
                 sw.WriteLine(message);
         }
     }
 
     public class Ghost
     {
+        private string name;
         private List<GeoPoint> points;
         private Vehicle vehicle;
         private Ped ped;
@@ -115,35 +121,33 @@ namespace ActivityGhosts
                                                          VehicleDrivingFlags.AllowMedianCrossing |
                                                          VehicleDrivingFlags.AvoidEmptyVehicles |
                                                          VehicleDrivingFlags.AvoidObjects |
-                                                         VehicleDrivingFlags.AvoidVehicles;
+                                                         VehicleDrivingFlags.AvoidVehicles |
+                                                         VehicleDrivingFlags.IgnorePathFinding;
 
-        private List<string> availableBicycles = new List<string> { "BMX",
-                                                                    "CRUISER",
-                                                                    "FIXTER",
-                                                                    "SCORCHER",
-                                                                    "TRIBIKE",
-                                                                    "TRIBIKE2",
-                                                                    "TRIBIKE3" };
+        private string[] availableBicycles = { "BMX", "CRUISER", "FIXTER", "SCORCHER", "TRIBIKE", "TRIBIKE2", "TRIBIKE3" };
 
-        public Ghost(List<GeoPoint> pointList)
+        private string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
+
+        public Ghost(string fileName, List<GeoPoint> pointList)
         {
+            name = fileName;
             points = pointList;
             index = 0;
             skipped = 0;
             Model vModel;
             Random random = new Random();
-            vModel = new Model(availableBicycles[random.Next(availableBicycles.Count)]);
+            vModel = new Model(availableBicycles[random.Next(availableBicycles.Length)]);
             vModel.Request();
             if (vModel.IsInCdImage && vModel.IsValid)
             {
                 while (!vModel.IsLoaded)
                     Script.Wait(10);
-                Vector3 start = GetPoint(index, ActivityGhosts.ghosts.Count + 1);
+                Vector3 start = GetPoint(index, ActivityGhosts.ghosts.Count % 2 == 0 ? ActivityGhosts.ghosts.Count : ActivityGhosts.ghosts.Count * -1);
                 vehicle = World.CreateVehicle(vModel, start);
                 vModel.MarkAsNoLongerNeeded();
                 vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
                 Model pModel;
-                pModel = new Model("a_m_y_cyclist_01");
+                pModel = new Model(availableCyclists[random.Next(availableCyclists.Length)]);
                 pModel.Request();
                 if (pModel.IsInCdImage && pModel.IsValid)
                 {
@@ -165,7 +169,8 @@ namespace ActivityGhosts
             int next = index + 1;
             if (points.Count > next)
             {
-                if (vehicle.Position.DistanceTo2D(GetPoint(index)) < 20f)
+                float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
+                if (distance < 20f)
                 {
                     ped.Task.ClearAll();
                     ped.Task.DriveTo(vehicle, GetPoint(next), 0f, points[index].Speed, (DrivingStyle)customDrivingStyle);
@@ -176,14 +181,16 @@ namespace ActivityGhosts
                 else
                 {
                     skipped++;
-                    if (ActivityGhosts.debug) ActivityGhosts.Log($"Skipped {skipped} at {index}");
+                    if (ActivityGhosts.debug)
+                        ActivityGhosts.Log($"{name} skipped {skipped} at {index} (off by {distance})");
                 }
                 if (skipped > 4 && points.Count > next + skipped + 1)
                 {
                     next += skipped;
                     vehicle.Position = GetPoint(next);
                     vehicle.Heading = GetHeading(next);
-                    if (ActivityGhosts.debug) ActivityGhosts.Log($"Teleported from {index} to {next}");
+                    if (ActivityGhosts.debug)
+                        ActivityGhosts.Log($"{name} teleported from {index} to {next}");
                     ped.Task.ClearAll();
                     ped.Task.DriveTo(vehicle, GetPoint(next + 1), 0f, points[next].Speed, (DrivingStyle)customDrivingStyle);
                     vehicle.Speed = points[next].Speed;
@@ -193,8 +200,13 @@ namespace ActivityGhosts
                 ped.IsInvincible = true;
                 ped.CanBeKnockedOffBike = true;
             }
-            else
-                Delete();
+            else if (ped.IsOnBike)
+            {
+                ped.Task.ClearAll();
+                ped.Task.LeaveVehicle(vehicle, false);
+                if (ActivityGhosts.debug)
+                    ActivityGhosts.Log($"{name} finished at {index}");
+            }
         }
 
         private Vector3 GetPoint(int i, int offset = 0)
