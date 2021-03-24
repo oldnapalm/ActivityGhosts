@@ -8,25 +8,27 @@ using Dynastream.Fit;
 using GTA;
 using GTA.Math;
 using GTA.UI;
+using NativeUI;
 
 namespace ActivityGhosts
 {
     public class ActivityGhosts : Script
     {
-        public static List<Ghost> ghosts;
+        private Dictionary<string, Ghost> ghosts;
         private System.DateTime lastTime;
-        private Keys loadKey;
+        private Keys menuKey;
         public static PointF initialGPSPoint;
         public static bool debug;
         private const string LOG_FILE = @".\Scripts\ActivityGhosts.log";
 
         public ActivityGhosts()
         {
-            ghosts = new List<Ghost>();
+            ghosts = new Dictionary<string, Ghost>();
             lastTime = System.DateTime.UtcNow;
+            System.IO.File.Delete(LOG_FILE);
             LoadSettings();
+            CreateMenu();
             Tick += OnTick;
-            KeyDown += OnKeyDown;
             Aborted += OnAbort;
         }
 
@@ -34,70 +36,97 @@ namespace ActivityGhosts
         {
             if (System.DateTime.UtcNow >= lastTime.AddSeconds(1))
             {
-                foreach (Ghost g in ghosts)
-                    g.Update();
+                foreach (KeyValuePair<string, Ghost> g in ghosts)
+                    g.Value.Update();
                 lastTime = System.DateTime.UtcNow;
-            }
-        }
-
-        private void OnKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == loadKey)
-            {
-                System.IO.File.Delete(LOG_FILE);
-                LoadGhosts();
             }
         }
 
         private void OnAbort(object sender, EventArgs e)
         {
-            KeyDown -= OnKeyDown;
             Tick -= OnTick;
             DeleteGhosts();
         }
 
         private void DeleteGhosts()
         {
-            foreach (Ghost g in ghosts)
-                g.Delete();
+            foreach (KeyValuePair<string, Ghost> g in ghosts)
+                g.Value.Delete();
             ghosts.Clear();
         }
 
         private void LoadGhosts()
         {
-            DeleteGhosts();
-            string ghostsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Rockstar Games\\GTA V\\Ghosts";
-            if (Directory.Exists(ghostsPath))
+            int loaded = 0;
+            string activitiesPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Rockstar Games\\GTA V\\Activities";
+            if (Directory.Exists(activitiesPath))
             {
-                DirectoryInfo dir = new DirectoryInfo(ghostsPath);
+                DirectoryInfo dir = new DirectoryInfo(activitiesPath);
                 FileInfo[] files = dir.GetFiles("*.fit");
                 foreach (FileInfo file in files)
                 {
                     FitActivityDecoder fit = new FitActivityDecoder(file.FullName);
                     List<GeoPoint> points = fit.pointList;
-                    if (points.Count > 1)
+                    string name = Path.GetFileNameWithoutExtension(file.Name);
+                    if (points.Count > 1 && !ghosts.ContainsKey(name))
                     {
                         if (Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
                         {
-                            ghosts.Add(new Ghost(Path.GetFileNameWithoutExtension(file.Name), points));
+                            int offset = loaded / 2 + 1;
+                            if (loaded % 2 == 0)
+                                offset *= -1;
+                            points[0].Lat += offset;
+                            float h = Game.Player.Character.Heading;
+                            if ((h > 90f && h < 180f) || (h > 270f && h < 360f))
+                                points[0].Long -= offset;
+                            else
+                                points[0].Long += offset;
+                            ghosts.Add(name, new Ghost(name, points));
+                            loaded++;
                             if (debug)
-                                Log($"Loaded ghost from {file.Name}");
+                                Log($"Loaded ghost {name}");
                         }
                     }
                 }
             }
-            Notification.Show($"{ghosts.Count} ghosts loaded");
+            Notification.Show($"{loaded} ghosts loaded");
         }
 
         private void LoadSettings()
         {
             CultureInfo.CurrentCulture = new CultureInfo("", false);
             ScriptSettings settings = ScriptSettings.Load(@".\Scripts\ActivityGhosts.ini");
-            loadKey = (Keys)Enum.Parse(typeof(Keys), settings.GetValue("Main", "LoadGhostsKey", "F8"), true);
-            float initialGPSPointLat = settings.GetValue("Main", "InitialGPSPointLat", -19.106371f);
-            float initialGPSPointLong = settings.GetValue("Main", "InitialGPSPointLong", -169.870977f);
+            menuKey = (Keys)Enum.Parse(typeof(Keys), settings.GetValue("Main", "MenuKey", "F8"), true);
+            float initialGPSPointLat = settings.GetValue("Main", "InitialGPSPointLat", -19.10637f);
+            float initialGPSPointLong = settings.GetValue("Main", "InitialGPSPointLong", -169.871f);
             initialGPSPoint = new PointF(initialGPSPointLat, initialGPSPointLong);
             debug = settings.GetValue("Main", "Debug", false);
+        }
+
+        private void CreateMenu()
+        {
+            var menuPool = new MenuPool();
+            var mainMenu = new UIMenu("ActivityGhosts", "Ride with ghosts from previous activities");
+            menuPool.Add(mainMenu);
+            var loadMenuItem = new UIMenuItem("Load", "Load ghosts");
+            mainMenu.AddItem(loadMenuItem);
+            var deleteMenuItem = new UIMenuItem("Delete", "Delete ghosts");
+            mainMenu.AddItem(deleteMenuItem);
+            mainMenu.OnItemSelect += (sender, item, index) =>
+            {
+                if (item == loadMenuItem)
+                    LoadGhosts();
+                else if (item == deleteMenuItem)
+                    DeleteGhosts();
+                mainMenu.Visible = false;
+            };
+            menuPool.RefreshIndex();
+            Tick += (o, e) => menuPool.ProcessMenus();
+            KeyDown += (o, e) =>
+            {
+                if (e.KeyCode == menuKey)
+                    mainMenu.Visible = !mainMenu.Visible;
+            };
         }
 
         public static void Log(string message)
@@ -142,7 +171,7 @@ namespace ActivityGhosts
             {
                 while (!vModel.IsLoaded)
                     Script.Wait(10);
-                Vector3 start = GetPoint(index, ActivityGhosts.ghosts.Count % 2 == 0 ? ActivityGhosts.ghosts.Count : ActivityGhosts.ghosts.Count * -1);
+                Vector3 start = GetPoint(index);
                 vehicle = World.CreateVehicle(vModel, start);
                 vModel.MarkAsNoLongerNeeded();
                 vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
@@ -209,9 +238,9 @@ namespace ActivityGhosts
             }
         }
 
-        private Vector3 GetPoint(int i, int offset = 0)
+        private Vector3 GetPoint(int i)
         {
-            return new Vector3(points[i].Lat + offset, points[i].Long + offset, World.GetGroundHeight(new Vector2(points[i].Lat, points[i].Long)));
+            return new Vector3(points[i].Lat, points[i].Long, World.GetGroundHeight(new Vector2(points[i].Lat, points[i].Long)));
         }
 
         private float GetHeading(int i)

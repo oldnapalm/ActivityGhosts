@@ -34,6 +34,9 @@
     <Reference Include="Fit">
       <HintPath>D:\Grand Theft Auto V\Scripts\Fit.dll</HintPath>
     </Reference>
+    <Reference Include="NativeUI">
+      <HintPath>D:\Grand Theft Auto V\Scripts\NativeUI.dll</HintPath>
+    </Reference>
     <Reference Include="ScriptHookVDotNet3">
       <HintPath>D:\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
     </Reference>
