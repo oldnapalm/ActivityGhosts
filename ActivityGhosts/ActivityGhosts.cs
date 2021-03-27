@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using Dynastream.Fit;
 using GTA;
@@ -53,6 +54,13 @@ namespace ActivityGhosts
             foreach (KeyValuePair<string, Ghost> g in ghosts)
                 g.Value.Delete();
             ghosts.Clear();
+        }
+
+        private void RegroupGhosts()
+        {
+            foreach (KeyValuePair<string, Ghost> g in ghosts)
+                g.Value.Regroup(new PointF(Game.Player.Character.Position.X, Game.Player.Character.Position.Y));
+            lastTime = System.DateTime.UtcNow;
         }
 
         private void LoadGhosts()
@@ -110,12 +118,16 @@ namespace ActivityGhosts
             menuPool.Add(mainMenu);
             var loadMenuItem = new UIMenuItem("Load", "Load ghosts");
             mainMenu.AddItem(loadMenuItem);
+            var regroupMenuItem = new UIMenuItem("Regroup", "Regroup ghosts");
+            mainMenu.AddItem(regroupMenuItem);
             var deleteMenuItem = new UIMenuItem("Delete", "Delete ghosts");
             mainMenu.AddItem(deleteMenuItem);
             mainMenu.OnItemSelect += (sender, item, index) =>
             {
                 if (item == loadMenuItem)
                     LoadGhosts();
+                else if (item == regroupMenuItem)
+                    RegroupGhosts();
                 else if (item == deleteMenuItem)
                     DeleteGhosts();
                 mainMenu.Visible = false;
@@ -236,6 +248,28 @@ namespace ActivityGhosts
                 if (ActivityGhosts.debug)
                     ActivityGhosts.Log($"{name} finished at {index}");
             }
+        }
+
+        public void Regroup(PointF point)
+        {
+            int closest = points.IndexOf(points.OrderBy(x => Distance(point, x)).First());
+            if (points.Count > closest + 1)
+            {
+                index = closest + 1;
+                if (!ped.IsOnBike)
+                    ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
+                vehicle.Position = GetPoint(closest);
+                vehicle.Heading = GetHeading(closest);
+                ped.Task.ClearAll();
+                ped.Task.DriveTo(vehicle, GetPoint(index), 0f, points[closest].Speed, (DrivingStyle)customDrivingStyle);
+                vehicle.Speed = points[closest].Speed;
+                skipped = 0;
+            }
+        }
+
+        private double Distance(PointF from, GeoPoint to)
+        {
+            return Math.Sqrt((to.Long - from.Y) * (to.Long - from.Y) + (to.Lat - from.X) * (to.Lat - from.X));
         }
 
         private Vector3 GetPoint(int i)
