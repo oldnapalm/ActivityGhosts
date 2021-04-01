@@ -15,18 +15,15 @@ namespace ActivityGhosts
 {
     public class ActivityGhosts : Script
     {
-        private Dictionary<string, Ghost> ghosts;
+        private List<Ghost> ghosts;
         private System.DateTime lastTime;
         private Keys menuKey;
         public static PointF initialGPSPoint;
-        public static bool debug;
-        private const string LOG_FILE = @".\Scripts\ActivityGhosts.log";
 
         public ActivityGhosts()
         {
-            ghosts = new Dictionary<string, Ghost>();
+            ghosts = new List<Ghost>();
             lastTime = System.DateTime.UtcNow;
-            System.IO.File.Delete(LOG_FILE);
             LoadSettings();
             CreateMenu();
             Tick += OnTick;
@@ -37,8 +34,8 @@ namespace ActivityGhosts
         {
             if (System.DateTime.UtcNow >= lastTime.AddSeconds(1))
             {
-                foreach (KeyValuePair<string, Ghost> g in ghosts)
-                    g.Value.Update();
+                foreach (Ghost g in ghosts)
+                    g.Update();
                 lastTime = System.DateTime.UtcNow;
             }
         }
@@ -51,21 +48,20 @@ namespace ActivityGhosts
 
         private void DeleteGhosts()
         {
-            foreach (KeyValuePair<string, Ghost> g in ghosts)
-                g.Value.Delete();
+            foreach (Ghost g in ghosts)
+                g.Delete();
             ghosts.Clear();
         }
 
         private void RegroupGhosts()
         {
-            foreach (KeyValuePair<string, Ghost> g in ghosts)
-                g.Value.Regroup(new PointF(Game.Player.Character.Position.X, Game.Player.Character.Position.Y));
+            foreach (Ghost g in ghosts)
+                g.Regroup(new PointF(Game.Player.Character.Position.X, Game.Player.Character.Position.Y));
             lastTime = System.DateTime.UtcNow;
         }
 
         private void LoadGhosts()
         {
-            int loaded = 0;
             string activitiesPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Rockstar Games\\GTA V\\Activities";
             if (Directory.Exists(activitiesPath))
             {
@@ -75,13 +71,12 @@ namespace ActivityGhosts
                 {
                     FitActivityDecoder fit = new FitActivityDecoder(file.FullName);
                     List<GeoPoint> points = fit.pointList;
-                    string name = Path.GetFileNameWithoutExtension(file.Name);
-                    if (points.Count > 1 && !ghosts.ContainsKey(name))
+                    if (points.Count > 1)
                     {
                         if (Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
                         {
-                            int offset = loaded / 2 + 1;
-                            if (loaded % 2 == 0)
+                            int offset = ghosts.Count / 2 + 1;
+                            if (ghosts.Count % 2 == 0)
                                 offset *= -1;
                             points[0].Lat += offset;
                             float h = Game.Player.Character.Heading;
@@ -89,15 +84,12 @@ namespace ActivityGhosts
                                 points[0].Long -= offset;
                             else
                                 points[0].Long += offset;
-                            ghosts.Add(name, new Ghost(name, points));
-                            loaded++;
-                            if (debug)
-                                Log($"Loaded ghost {name}");
+                            ghosts.Add(new Ghost(points));
                         }
                     }
                 }
             }
-            Notification.Show($"{loaded} ghosts loaded");
+            Notification.Show($"{ghosts.Count} ghosts loaded");
         }
 
         private void LoadSettings()
@@ -108,7 +100,6 @@ namespace ActivityGhosts
             float initialGPSPointLat = settings.GetValue("Main", "InitialGPSPointLat", -19.10637f);
             float initialGPSPointLong = settings.GetValue("Main", "InitialGPSPointLong", -169.871f);
             initialGPSPoint = new PointF(initialGPSPointLat, initialGPSPointLong);
-            debug = settings.GetValue("Main", "Debug", false);
         }
 
         private void CreateMenu()
@@ -117,19 +108,35 @@ namespace ActivityGhosts
             var mainMenu = new UIMenu("ActivityGhosts", "Ride with ghosts from previous activities");
             menuPool.Add(mainMenu);
             var loadMenuItem = new UIMenuItem("Load", "Load ghosts");
+            loadMenuItem.Enabled = true;
             mainMenu.AddItem(loadMenuItem);
             var regroupMenuItem = new UIMenuItem("Regroup", "Regroup ghosts");
+            regroupMenuItem.Enabled = false;
             mainMenu.AddItem(regroupMenuItem);
             var deleteMenuItem = new UIMenuItem("Delete", "Delete ghosts");
+            deleteMenuItem.Enabled = false;
             mainMenu.AddItem(deleteMenuItem);
             mainMenu.OnItemSelect += (sender, item, index) =>
             {
-                if (item == loadMenuItem)
+                if (item == loadMenuItem && loadMenuItem.Enabled)
+                {
                     LoadGhosts();
-                else if (item == regroupMenuItem)
+                    if (ghosts.Count > 0)
+                    {
+                        loadMenuItem.Enabled = false;
+                        regroupMenuItem.Enabled = true;
+                        deleteMenuItem.Enabled = true;
+                    }
+                }
+                else if (item == regroupMenuItem && regroupMenuItem.Enabled)
                     RegroupGhosts();
-                else if (item == deleteMenuItem)
+                else if (item == deleteMenuItem && deleteMenuItem.Enabled)
+                {
                     DeleteGhosts();
+                    loadMenuItem.Enabled = true;
+                    regroupMenuItem.Enabled = false;
+                    deleteMenuItem.Enabled = false;
+                }
                 mainMenu.Visible = false;
             };
             menuPool.RefreshIndex();
@@ -140,23 +147,15 @@ namespace ActivityGhosts
                     mainMenu.Visible = !mainMenu.Visible;
             };
         }
-
-        public static void Log(string message)
-        {
-            using (StreamWriter sw = new StreamWriter(LOG_FILE, true))
-                sw.WriteLine(message);
-        }
     }
 
     public class Ghost
     {
-        private string name;
         private List<GeoPoint> points;
         private Vehicle vehicle;
         private Ped ped;
         private Blip blip;
         private int index;
-        private int skipped;
 
         private VehicleDrivingFlags customDrivingStyle = VehicleDrivingFlags.AllowGoingWrongWay |
                                                          VehicleDrivingFlags.AllowMedianCrossing |
@@ -169,12 +168,10 @@ namespace ActivityGhosts
 
         private string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
 
-        public Ghost(string fileName, List<GeoPoint> pointList)
+        public Ghost(List<GeoPoint> pointList)
         {
-            name = fileName;
             points = pointList;
             index = 0;
-            skipped = 0;
             Model vModel;
             Random random = new Random();
             vModel = new Model(availableBicycles[random.Next(availableBicycles.Length)]);
@@ -199,7 +196,7 @@ namespace ActivityGhosts
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                     vehicle.Heading = GetHeading(index);
                     blip = vehicle.AddBlip();
-                    blip.Name = "Ghost";
+                    blip.Name = "Ghost (active)";
                     blip.Color = BlipColor.Blue;
                 }
             }
@@ -207,37 +204,21 @@ namespace ActivityGhosts
 
         public void Update()
         {
-            int next = index + 1;
-            if (points.Count > next)
+            if (points.Count > index + 1)
             {
+                float speed = points[index].Speed;
                 float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
-                if (distance < 20f)
+                if (distance > 20f)
                 {
-                    ped.Task.ClearAll();
-                    ped.Task.DriveTo(vehicle, GetPoint(next), 0f, points[index].Speed, (DrivingStyle)customDrivingStyle);
-                    vehicle.Speed = points[index].Speed;
-                    index++;
-                    skipped = 0;
+                    vehicle.Position = GetPoint(index);
+                    vehicle.Heading = GetHeading(index);
                 }
-                else
-                {
-                    skipped++;
-                    if (ActivityGhosts.debug)
-                        ActivityGhosts.Log($"{name} skipped {skipped} at {index} (off by {distance})");
-                }
-                if (skipped > 4 && points.Count > next + skipped + 1)
-                {
-                    next += skipped;
-                    vehicle.Position = GetPoint(next);
-                    vehicle.Heading = GetHeading(next);
-                    if (ActivityGhosts.debug)
-                        ActivityGhosts.Log($"{name} teleported from {index} to {next}");
-                    ped.Task.ClearAll();
-                    ped.Task.DriveTo(vehicle, GetPoint(next + 1), 0f, points[next].Speed, (DrivingStyle)customDrivingStyle);
-                    vehicle.Speed = points[next].Speed;
-                    index += skipped + 1;
-                    skipped = 0;
-                }
+                else if (distance > 5f)
+                    speed *= 1.1f;
+                index++;
+                ped.Task.ClearAll();
+                ped.Task.DriveTo(vehicle, GetPoint(index), 0f, speed, (DrivingStyle)customDrivingStyle);
+                vehicle.Speed = speed;
                 ped.IsInvincible = true;
                 ped.CanBeKnockedOffBike = true;
             }
@@ -245,25 +226,28 @@ namespace ActivityGhosts
             {
                 ped.Task.ClearAll();
                 ped.Task.LeaveVehicle(vehicle, false);
-                if (ActivityGhosts.debug)
-                    ActivityGhosts.Log($"{name} finished at {index}");
+                blip.Name = "Ghost (finished)";
+                blip.Color = BlipColor.Red;
             }
         }
 
         public void Regroup(PointF point)
         {
-            int closest = points.IndexOf(points.OrderBy(x => Distance(point, x)).First());
-            if (points.Count > closest + 1)
+            index = points.IndexOf(points.OrderBy(x => Distance(point, x)).First());
+            if (points.Count > index + 1)
             {
-                index = closest + 1;
                 if (!ped.IsOnBike)
+                {
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
-                vehicle.Position = GetPoint(closest);
-                vehicle.Heading = GetHeading(closest);
+                    blip.Name = "Ghost (active)";
+                    blip.Color = BlipColor.Blue;
+                }
+                vehicle.Position = GetPoint(index);
+                vehicle.Heading = GetHeading(index);
                 ped.Task.ClearAll();
-                ped.Task.DriveTo(vehicle, GetPoint(index), 0f, points[closest].Speed, (DrivingStyle)customDrivingStyle);
-                vehicle.Speed = points[closest].Speed;
-                skipped = 0;
+                ped.Task.DriveTo(vehicle, GetPoint(index + 1), 0f, points[index].Speed, (DrivingStyle)customDrivingStyle);
+                vehicle.Speed = points[index].Speed;
+                index++;
             }
         }
 
