@@ -16,6 +16,7 @@ namespace ActivityGhosts
     public class ActivityGhosts : Script
     {
         private List<Ghost> ghosts;
+        private Blip start;
         private System.DateTime lastTime;
         private Keys menuKey;
         public static PointF initialGPSPoint;
@@ -51,6 +52,7 @@ namespace ActivityGhosts
             foreach (Ghost g in ghosts)
                 g.Delete();
             ghosts.Clear();
+            start?.Delete();
         }
 
         private void RegroupGhosts()
@@ -123,6 +125,8 @@ namespace ActivityGhosts
                     LoadGhosts();
                     if (ghosts.Count > 0)
                     {
+                        start = World.CreateBlip(Game.Player.Character.Position);
+                        start.Sprite = BlipSprite.RaceBike;
                         loadMenuItem.Enabled = false;
                         regroupMenuItem.Enabled = true;
                         deleteMenuItem.Enabled = true;
@@ -161,6 +165,7 @@ namespace ActivityGhosts
                                                          VehicleDrivingFlags.AllowMedianCrossing |
                                                          VehicleDrivingFlags.AvoidEmptyVehicles |
                                                          VehicleDrivingFlags.AvoidObjects |
+                                                         VehicleDrivingFlags.AvoidPeds |
                                                          VehicleDrivingFlags.AvoidVehicles |
                                                          VehicleDrivingFlags.IgnorePathFinding;
 
@@ -183,6 +188,7 @@ namespace ActivityGhosts
                 Vector3 start = GetPoint(index);
                 vehicle = World.CreateVehicle(vModel, start);
                 vModel.MarkAsNoLongerNeeded();
+                vehicle.IsInvincible = true;
                 vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
                 Model pModel;
                 pModel = new Model(availableCyclists[random.Next(availableCyclists.Length)]);
@@ -193,6 +199,7 @@ namespace ActivityGhosts
                         Script.Wait(10);
                     ped = World.CreatePed(pModel, start);
                     pModel.MarkAsNoLongerNeeded();
+                    ped.IsInvincible = true;
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                     vehicle.Heading = GetHeading(index);
                     blip = vehicle.AddBlip();
@@ -206,6 +213,8 @@ namespace ActivityGhosts
         {
             if (points.Count > index + 1)
             {
+                if (!ped.IsOnBike)
+                    ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                 float speed = points[index].Speed;
                 float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
                 if (distance > 20f)
@@ -219,8 +228,6 @@ namespace ActivityGhosts
                 ped.Task.ClearAll();
                 ped.Task.DriveTo(vehicle, GetPoint(index), 0f, speed, (DrivingStyle)customDrivingStyle);
                 vehicle.Speed = speed;
-                ped.IsInvincible = true;
-                ped.CanBeKnockedOffBike = true;
             }
             else if (ped.IsOnBike)
             {
