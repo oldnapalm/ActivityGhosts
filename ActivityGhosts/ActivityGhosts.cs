@@ -20,6 +20,7 @@ namespace ActivityGhosts
         private System.DateTime lastTime;
         private Keys menuKey;
         public static PointF initialGPSPoint;
+        public static int opacity;
 
         public ActivityGhosts()
         {
@@ -102,6 +103,10 @@ namespace ActivityGhosts
             float initialGPSPointLat = settings.GetValue("Main", "InitialGPSPointLat", -19.10637f);
             float initialGPSPointLong = settings.GetValue("Main", "InitialGPSPointLong", -169.871f);
             initialGPSPoint = new PointF(initialGPSPointLat, initialGPSPointLong);
+            opacity = settings.GetValue("Main", "Opacity", 50);
+            if (opacity < 0) opacity = 0;
+            if (opacity > 100) opacity = 100;
+            opacity *= 255 / 100;
         }
 
         private void CreateMenu()
@@ -189,6 +194,7 @@ namespace ActivityGhosts
                 vehicle = World.CreateVehicle(vModel, start);
                 vModel.MarkAsNoLongerNeeded();
                 vehicle.IsInvincible = true;
+                vehicle.Opacity = ActivityGhosts.opacity;
                 vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
                 Model pModel;
                 pModel = new Model(availableCyclists[random.Next(availableCyclists.Length)]);
@@ -200,11 +206,13 @@ namespace ActivityGhosts
                     ped = World.CreatePed(pModel, start);
                     pModel.MarkAsNoLongerNeeded();
                     ped.IsInvincible = true;
+                    ped.Opacity = ActivityGhosts.opacity;
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                     vehicle.Heading = GetHeading(index);
                     blip = vehicle.AddBlip();
+                    blip.Sprite = BlipSprite.Ghost;
                     blip.Name = "Ghost (active)";
-                    blip.Color = BlipColor.Blue;
+                    blip.Color = BlipColor.WhiteNotPure;
                 }
             }
         }
@@ -213,7 +221,7 @@ namespace ActivityGhosts
         {
             if (points.Count > index + 1)
             {
-                if (!ped.IsOnBike)
+                if (!ped.IsInVehicle(vehicle))
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                 float speed = points[index].Speed;
                 float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
@@ -229,7 +237,7 @@ namespace ActivityGhosts
                 ped.Task.DriveTo(vehicle, GetPoint(index), 0f, speed, (DrivingStyle)customDrivingStyle);
                 vehicle.Speed = speed;
             }
-            else if (ped.IsOnBike)
+            else if (ped.IsInVehicle(vehicle))
             {
                 ped.Task.ClearAll();
                 ped.Task.LeaveVehicle(vehicle, false);
@@ -243,11 +251,11 @@ namespace ActivityGhosts
             index = points.IndexOf(points.OrderBy(x => Distance(point, x)).First());
             if (points.Count > index + 1)
             {
-                if (!ped.IsOnBike)
+                if (!ped.IsInVehicle(vehicle))
                 {
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                     blip.Name = "Ghost (active)";
-                    blip.Color = BlipColor.Blue;
+                    blip.Color = BlipColor.WhiteNotPure;
                 }
                 vehicle.Position = GetPoint(index);
                 vehicle.Heading = GetHeading(index);

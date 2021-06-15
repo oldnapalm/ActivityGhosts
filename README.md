@@ -4,7 +4,7 @@ Basic activity ghosts mod for [GTBikeV](https://www.gtbikev.com/)
 
 ## Installation
 - Put `ActivityGhosts.dll` and `ActivityGhosts.ini` in the `Scripts` folder
-- Optionally, edit `ActivityGhosts.ini` to change the menu key and/or initial GPS coordinates
+- Optionally, open `ActivityGhosts.ini` and edit preferences
 - The requirements should be satisfied if you have already installed GTBikeV
 
 ## Usage
