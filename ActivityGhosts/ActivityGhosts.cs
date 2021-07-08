@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using Dynastream.Fit;
 using GTA;
 using GTA.Math;
+using GTA.Native;
 using GTA.UI;
 using NativeUI;
 
@@ -21,6 +22,7 @@ namespace ActivityGhosts
         private Keys menuKey;
         public static PointF initialGPSPoint;
         public static int opacity;
+        private bool showDate;
 
         public ActivityGhosts()
         {
@@ -40,6 +42,17 @@ namespace ActivityGhosts
                     g.Update();
                 lastTime = System.DateTime.UtcNow;
             }
+
+            if (showDate)
+                foreach (Ghost g in ghosts)
+                    if (g.ped.IsOnScreen && g.ped.IsInRange(Game.Player.Character.Position, 20f))
+                    {
+                        var pos = g.ped.Bones[Bone.IKHead].Position + new Vector3(0, 0, 0.5f) + g.ped.Velocity / Game.FPS;
+                        Function.Call(Hash.SET_DRAW_ORIGIN, pos.X, pos.Y, pos.Z, 0);
+                        g.date.Scale = 0.4f - GameplayCamera.Position.DistanceTo(g.ped.Position) * 0.01f;
+                        g.date.Draw();
+                        Function.Call(Hash.CLEAR_DRAW_ORIGIN);
+                    }
         }
 
         private void OnAbort(object sender, EventArgs e)
@@ -87,7 +100,14 @@ namespace ActivityGhosts
                                 points[0].Long -= offset;
                             else
                                 points[0].Long += offset;
-                            ghosts.Add(new Ghost(points));
+                            string span;
+                            var seconds = (System.DateTime.UtcNow - file.CreationTimeUtc).TotalSeconds;
+                            if (seconds < 7200) span = $"{seconds / 60:N0} minutes";
+                            else if (seconds < 172800) span = $"{seconds / 3600:N0} hours";
+                            else if (seconds < 1209600) span = $"{seconds / 86400:N0} days";
+                            else if (seconds < 5259492) span = $"{seconds / 604800:N0} weeks";
+                            else span = $"{seconds / 2629746:N0} months";
+                            ghosts.Add(new Ghost(points, span));
                         }
                     }
                 }
@@ -107,6 +127,7 @@ namespace ActivityGhosts
             if (opacity < 0) opacity = 0;
             if (opacity > 100) opacity = 100;
             opacity *= 255 / 100;
+            showDate = settings.GetValue("Main", "ShowDate", true);
         }
 
         private void CreateMenu()
@@ -162,7 +183,8 @@ namespace ActivityGhosts
     {
         private List<GeoPoint> points;
         private Vehicle vehicle;
-        private Ped ped;
+        public Ped ped;
+        public TextElement date;
         private Blip blip;
         private int index;
 
@@ -178,7 +200,7 @@ namespace ActivityGhosts
 
         private string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
 
-        public Ghost(List<GeoPoint> pointList)
+        public Ghost(List<GeoPoint> pointList, string span)
         {
             points = pointList;
             index = 0;
@@ -215,6 +237,7 @@ namespace ActivityGhosts
                     blip.Color = BlipColor.WhiteNotPure;
                 }
             }
+            date = new TextElement($"{span} ago", new PointF(0, 0), 1f, Color.WhiteSmoke, GTA.UI.Font.ChaletLondon, Alignment.Center, false, true);
         }
 
         public void Update()
