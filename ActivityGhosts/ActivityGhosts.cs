@@ -18,7 +18,7 @@ namespace ActivityGhosts
     {
         private List<Ghost> ghosts;
         private Blip start;
-        private System.DateTime lastTime;
+        private int lastTime;
         private Keys menuKey;
         public static PointF initialGPSPoint;
         public static int opacity;
@@ -27,7 +27,7 @@ namespace ActivityGhosts
         public ActivityGhosts()
         {
             ghosts = new List<Ghost>();
-            lastTime = System.DateTime.UtcNow;
+            lastTime = Environment.TickCount;
             LoadSettings();
             CreateMenu();
             Tick += OnTick;
@@ -36,11 +36,11 @@ namespace ActivityGhosts
 
         private void OnTick(object sender, EventArgs e)
         {
-            if (System.DateTime.UtcNow >= lastTime.AddSeconds(1))
+            if (Environment.TickCount >= lastTime + 1000)
             {
                 foreach (Ghost g in ghosts)
                     g.Update();
-                lastTime = System.DateTime.UtcNow;
+                lastTime = Environment.TickCount;
             }
 
             if (showDate)
@@ -73,7 +73,7 @@ namespace ActivityGhosts
         {
             foreach (Ghost g in ghosts)
                 g.Regroup(new PointF(Game.Player.Character.Position.X, Game.Player.Character.Position.Y));
-            lastTime = System.DateTime.UtcNow;
+            lastTime = Environment.TickCount;
         }
 
         private void LoadGhosts()
