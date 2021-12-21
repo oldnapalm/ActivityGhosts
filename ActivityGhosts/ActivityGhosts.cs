@@ -10,19 +10,25 @@ using GTA;
 using GTA.Math;
 using GTA.Native;
 using GTA.UI;
-using NativeUI;
+using LemonUI;
+using LemonUI.Menus;
 
 namespace ActivityGhosts
 {
     public class ActivityGhosts : Script
     {
-        private List<Ghost> ghosts;
+        private readonly List<Ghost> ghosts;
         private Blip start;
         private int lastTime;
         private Keys menuKey;
         public static PointF initialGPSPoint;
         public static int opacity;
         private bool showDate;
+        private ObjectPool menuPool;
+        private NativeMenu mainMenu;
+        private NativeItem loadMenuItem;
+        private NativeItem regroupMenuItem;
+        private NativeItem deleteMenuItem;
 
         public ActivityGhosts()
         {
@@ -132,45 +138,52 @@ namespace ActivityGhosts
 
         private void CreateMenu()
         {
-            var menuPool = new MenuPool();
-            var mainMenu = new UIMenu("ActivityGhosts", "Ride with ghosts from previous activities");
+            menuPool = new ObjectPool();
+            mainMenu = new NativeMenu("ActivityGhosts");
             menuPool.Add(mainMenu);
-            var loadMenuItem = new UIMenuItem("Load", "Load ghosts");
-            loadMenuItem.Enabled = true;
-            mainMenu.AddItem(loadMenuItem);
-            var regroupMenuItem = new UIMenuItem("Regroup", "Regroup ghosts");
-            regroupMenuItem.Enabled = false;
-            mainMenu.AddItem(regroupMenuItem);
-            var deleteMenuItem = new UIMenuItem("Delete", "Delete ghosts");
-            deleteMenuItem.Enabled = false;
-            mainMenu.AddItem(deleteMenuItem);
-            mainMenu.OnItemSelect += (sender, item, index) =>
+            loadMenuItem = new NativeItem("Load", "Load ghosts")
             {
-                if (item == loadMenuItem && loadMenuItem.Enabled)
+                Enabled = true
+            };
+            mainMenu.Add(loadMenuItem);
+            loadMenuItem.Activated += (sender, itemArgs) =>
+            {
+                LoadGhosts();
+                if (ghosts.Count > 0)
                 {
-                    LoadGhosts();
-                    if (ghosts.Count > 0)
-                    {
-                        start = World.CreateBlip(Game.Player.Character.Position);
-                        start.Sprite = BlipSprite.RaceBike;
-                        loadMenuItem.Enabled = false;
-                        regroupMenuItem.Enabled = true;
-                        deleteMenuItem.Enabled = true;
-                    }
-                }
-                else if (item == regroupMenuItem && regroupMenuItem.Enabled)
-                    RegroupGhosts();
-                else if (item == deleteMenuItem && deleteMenuItem.Enabled)
-                {
-                    DeleteGhosts();
-                    loadMenuItem.Enabled = true;
-                    regroupMenuItem.Enabled = false;
-                    deleteMenuItem.Enabled = false;
+                    start = World.CreateBlip(Game.Player.Character.Position);
+                    start.Sprite = BlipSprite.RaceBike;
+                    loadMenuItem.Enabled = false;
+                    regroupMenuItem.Enabled = true;
+                    deleteMenuItem.Enabled = true;
                 }
                 mainMenu.Visible = false;
             };
-            menuPool.RefreshIndex();
-            Tick += (o, e) => menuPool.ProcessMenus();
+            regroupMenuItem = new NativeItem("Regroup", "Regroup ghosts")
+            {
+                Enabled = false
+            };
+            mainMenu.Add(regroupMenuItem);
+            regroupMenuItem.Activated += (sender, itemArgs) =>
+            {
+                RegroupGhosts();
+                mainMenu.Visible = false;
+            };
+            deleteMenuItem = new NativeItem("Delete", "Delete ghosts")
+            {
+                Enabled = false
+            };
+            mainMenu.Add(deleteMenuItem);
+            deleteMenuItem.Activated += (sender, itemArgs) =>
+            {
+                DeleteGhosts();
+                loadMenuItem.Enabled = true;
+                regroupMenuItem.Enabled = false;
+                deleteMenuItem.Enabled = false;
+                mainMenu.Visible = false;
+            };
+            menuPool.RefreshAll();
+            Tick += (o, e) => menuPool.Process();
             KeyDown += (o, e) =>
             {
                 if (e.KeyCode == menuKey)
@@ -181,24 +194,24 @@ namespace ActivityGhosts
 
     public class Ghost
     {
-        private List<GeoPoint> points;
-        private Vehicle vehicle;
+        private readonly List<GeoPoint> points;
+        private readonly Vehicle vehicle;
         public Ped ped;
         public TextElement date;
-        private Blip blip;
+        private readonly Blip blip;
         private int index;
 
-        private VehicleDrivingFlags customDrivingStyle = VehicleDrivingFlags.AllowGoingWrongWay |
-                                                         VehicleDrivingFlags.AllowMedianCrossing |
-                                                         VehicleDrivingFlags.AvoidEmptyVehicles |
-                                                         VehicleDrivingFlags.AvoidObjects |
-                                                         VehicleDrivingFlags.AvoidPeds |
-                                                         VehicleDrivingFlags.AvoidVehicles |
-                                                         VehicleDrivingFlags.IgnorePathFinding;
+        private readonly VehicleDrivingFlags customDrivingStyle = VehicleDrivingFlags.AllowGoingWrongWay |
+                                                                  VehicleDrivingFlags.AllowMedianCrossing |
+                                                                  VehicleDrivingFlags.AvoidEmptyVehicles |
+                                                                  VehicleDrivingFlags.AvoidObjects |
+                                                                  VehicleDrivingFlags.AvoidPeds |
+                                                                  VehicleDrivingFlags.AvoidVehicles |
+                                                                  VehicleDrivingFlags.IgnorePathFinding;
 
-        private string[] availableBicycles = { "BMX", "CRUISER", "FIXTER", "SCORCHER", "TRIBIKE", "TRIBIKE2", "TRIBIKE3" };
+        private readonly string[] availableBicycles = { "BMX", "CRUISER", "FIXTER", "SCORCHER", "TRIBIKE", "TRIBIKE2", "TRIBIKE3" };
 
-        private string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
+        private readonly string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
 
         public Ghost(List<GeoPoint> pointList, string span)
         {

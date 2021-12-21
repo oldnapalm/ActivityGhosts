@@ -17,6 +17,6 @@ https://github.com/oldnapalm/ActivityGhosts/releases/latest
 
 ## Requirements
 - [ScriptHookV](http://www.dev-c.com/gtav/scripthookv/)
-- [ScriptHookVDotNet](https://github.com/crosire/scripthookvdotnet/releases)
-- [NativeUI](https://github.com/Guad/NativeUI)
+- [ScriptHookVDotNet](https://github.com/crosire/scripthookvdotnet)
+- [LemonUI](https://github.com/justalemon/LemonUI)
 - [FIT](https://developer.garmin.com/fit/download/)
