@@ -107,13 +107,13 @@ namespace ActivityGhosts
                             else
                                 points[0].Long += offset;
                             string span;
-                            var seconds = (System.DateTime.UtcNow - file.CreationTimeUtc).TotalSeconds;
+                            var seconds = (System.DateTime.UtcNow - fit.startTime).TotalSeconds;
                             if (seconds < 7200) span = $"{seconds / 60:N0} minutes";
                             else if (seconds < 172800) span = $"{seconds / 3600:N0} hours";
                             else if (seconds < 1209600) span = $"{seconds / 86400:N0} days";
                             else if (seconds < 5259492) span = $"{seconds / 604800:N0} weeks";
                             else span = $"{seconds / 2629746:N0} months";
-                            ghosts.Add(new Ghost(points, span));
+                            ghosts.Add(new Ghost(points, fit.sport, span));
                         }
                     }
                 }
@@ -195,11 +195,15 @@ namespace ActivityGhosts
     public class Ghost
     {
         private readonly List<GeoPoint> points;
+        private readonly Sport sport;
         private readonly Vehicle vehicle;
         public Ped ped;
         public TextElement date;
         private readonly Blip blip;
-        private int index;
+        private int index = 0;
+        private bool finished = false;
+        private readonly Animation animation = new Animation();
+        private readonly Animation lastAnimation = new Animation();
 
         private readonly VehicleDrivingFlags customDrivingStyle = VehicleDrivingFlags.AllowGoingWrongWay |
                                                                   VehicleDrivingFlags.AllowMedianCrossing |
@@ -213,42 +217,53 @@ namespace ActivityGhosts
 
         private readonly string[] availableCyclists = { "a_m_y_cyclist_01", "a_m_y_roadcyc_01" };
 
-        public Ghost(List<GeoPoint> pointList, string span)
+        private readonly string[] availableRunners = { "a_m_y_runner_01", "a_m_y_runner_02" };
+
+        public Ghost(List<GeoPoint> pointList, Sport type, string span)
         {
             points = pointList;
-            index = 0;
-            Model vModel;
+            sport = type;
             Random random = new Random();
-            vModel = new Model(availableBicycles[random.Next(availableBicycles.Length)]);
-            vModel.Request();
-            if (vModel.IsInCdImage && vModel.IsValid)
+            Vector3 start = GetPoint(index);
+            if (sport == Sport.Cycling)
             {
-                while (!vModel.IsLoaded)
-                    Script.Wait(10);
-                Vector3 start = GetPoint(index);
-                vehicle = World.CreateVehicle(vModel, start);
-                vModel.MarkAsNoLongerNeeded();
-                vehicle.IsInvincible = true;
-                vehicle.Opacity = ActivityGhosts.opacity;
-                vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
-                Model pModel;
-                pModel = new Model(availableCyclists[random.Next(availableCyclists.Length)]);
-                pModel.Request();
-                if (pModel.IsInCdImage && pModel.IsValid)
+                Model vModel;
+                vModel = new Model(availableBicycles[random.Next(availableBicycles.Length)]);
+                vModel.Request();
+                if (vModel.IsInCdImage && vModel.IsValid)
                 {
-                    while (!pModel.IsLoaded)
+                    while (!vModel.IsLoaded)
                         Script.Wait(10);
-                    ped = World.CreatePed(pModel, start);
-                    pModel.MarkAsNoLongerNeeded();
-                    ped.IsInvincible = true;
-                    ped.Opacity = ActivityGhosts.opacity;
+                    vehicle = World.CreateVehicle(vModel, start);
+                    vModel.MarkAsNoLongerNeeded();
+                    vehicle.IsInvincible = true;
+                    vehicle.Opacity = ActivityGhosts.opacity;
+                    vehicle.Mods.CustomPrimaryColor = Color.FromArgb(random.Next(255), random.Next(255), random.Next(255));
+                }
+            }
+            Model pModel;
+            pModel = sport == Sport.Cycling ? new Model(availableCyclists[random.Next(availableCyclists.Length)]) :
+                new Model(availableRunners[random.Next(availableRunners.Length)]);
+            pModel.Request();
+            if (pModel.IsInCdImage && pModel.IsValid)
+            {
+                while (!pModel.IsLoaded)
+                    Script.Wait(10);
+                ped = World.CreatePed(pModel, start);
+                pModel.MarkAsNoLongerNeeded();
+                ped.IsInvincible = true;
+                ped.Opacity = ActivityGhosts.opacity;
+                if (sport == Sport.Cycling)
+                {
                     ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                     vehicle.Heading = GetHeading(index);
-                    blip = vehicle.AddBlip();
-                    blip.Sprite = BlipSprite.Ghost;
-                    blip.Name = "Ghost (active)";
-                    blip.Color = BlipColor.WhiteNotPure;
                 }
+                else
+                    ped.Heading = GetHeading(index);
+                blip = ped.AddBlip();
+                blip.Sprite = BlipSprite.Ghost;
+                blip.Name = "Ghost (active)";
+                blip.Color = BlipColor.WhiteNotPure;
             }
             date = new TextElement($"{span} ago", new PointF(0, 0), 1f, Color.WhiteSmoke, GTA.UI.Font.ChaletLondon, Alignment.Center, false, true);
         }
@@ -257,26 +272,46 @@ namespace ActivityGhosts
         {
             if (points.Count > index + 1)
             {
-                if (!ped.IsInVehicle(vehicle))
-                    ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
                 float speed = points[index].Speed;
-                float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
-                if (distance > 20f)
+                if (sport == Sport.Cycling)
                 {
-                    vehicle.Position = GetPoint(index);
-                    vehicle.Heading = GetHeading(index);
+                    if (!ped.IsInVehicle(vehicle))
+                        ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
+                    float distance = vehicle.Position.DistanceTo2D(GetPoint(index));
+                    if (distance > 20f)
+                    {
+                        vehicle.Position = GetPoint(index);
+                        vehicle.Heading = GetHeading(index);
+                    }
+                    else if (distance > 5f)
+                        speed *= 1.1f;
+                    index++;
+                    ped.Task.ClearAll();
+                    ped.Task.DriveTo(vehicle, GetPoint(index), 0f, speed, (DrivingStyle)customDrivingStyle);
+                    vehicle.Speed = speed;
                 }
-                else if (distance > 5f)
-                    speed *= 1.1f;
-                index++;
-                ped.Task.ClearAll();
-                ped.Task.DriveTo(vehicle, GetPoint(index), 0f, speed, (DrivingStyle)customDrivingStyle);
-                vehicle.Speed = speed;
+                else
+                {
+                    float distance = ped.Position.DistanceTo2D(GetPoint(index));
+                    if (distance > 10f)
+                    {
+                        ped.Position = GetPoint(index);
+                        ped.Heading = GetHeading(index);
+                    }
+                    else if (distance > 3f)
+                        speed *= 1.1f;
+                    index++;
+                    ped.Task.GoTo(GetPoint(index));
+                    SetAnimation(speed);
+                    ped.Speed = speed;
+                }
             }
-            else if (ped.IsInVehicle(vehicle))
+            else if (!finished)
             {
+                finished = true;
                 ped.Task.ClearAll();
-                ped.Task.LeaveVehicle(vehicle, false);
+                if (sport == Sport.Cycling && ped.IsInVehicle(vehicle))
+                    ped.Task.LeaveVehicle(vehicle, false);
                 blip.Name = "Ghost (finished)";
                 blip.Color = BlipColor.Red;
             }
@@ -287,17 +322,30 @@ namespace ActivityGhosts
             index = points.IndexOf(points.OrderBy(x => Distance(point, x)).First());
             if (points.Count > index + 1)
             {
-                if (!ped.IsInVehicle(vehicle))
+                if (finished)
                 {
-                    ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
+                    finished = false;
                     blip.Name = "Ghost (active)";
                     blip.Color = BlipColor.WhiteNotPure;
                 }
-                vehicle.Position = GetPoint(index);
-                vehicle.Heading = GetHeading(index);
-                ped.Task.ClearAll();
-                ped.Task.DriveTo(vehicle, GetPoint(index + 1), 0f, points[index].Speed, (DrivingStyle)customDrivingStyle);
-                vehicle.Speed = points[index].Speed;
+                if (sport == Sport.Cycling)
+                {
+                    if (!ped.IsInVehicle(vehicle))
+                        ped.SetIntoVehicle(vehicle, VehicleSeat.Driver);
+                    vehicle.Position = GetPoint(index);
+                    vehicle.Heading = GetHeading(index);
+                    ped.Task.ClearAll();
+                    ped.Task.DriveTo(vehicle, GetPoint(index + 1), 0f, points[index].Speed, (DrivingStyle)customDrivingStyle);
+                    vehicle.Speed = points[index].Speed;
+                }
+                else
+                {
+                    ped.Position = GetPoint(index);
+                    ped.Heading = GetHeading(index);
+                    ped.Task.GoTo(GetPoint(index + 1));
+                    SetAnimation(points[index].Speed);
+                    ped.Speed = points[index].Speed;
+                }
                 index++;
             }
         }
@@ -321,8 +369,59 @@ namespace ActivityGhosts
         {
             blip.Delete();
             ped.Delete();
-            vehicle.Delete();
+            vehicle?.Delete();
             points.Clear();
+        }
+
+        private class Animation
+        {
+            public string dictionary;
+            public string name;
+            public float speed;
+
+            public Animation()
+            {
+                dictionary = "";
+                name = "";
+                speed = 0.0f;
+            }
+
+            public bool IsEmpty()
+            {
+                return dictionary == "" && name == "" && speed == 0.0f;
+            }
+        }
+
+        private void SetAnimation(float speed)
+        {
+            if (speed < 2.4f)
+            {
+                animation.dictionary = "move_m@casual@f";
+                animation.name = "walk";
+                animation.speed = speed / 1.69f;
+            }
+            else if (speed >= 2.4f && speed < 4.6f)
+            {
+                animation.dictionary = "move_m@jog@";
+                animation.name = "run";
+                animation.speed = speed / 3.13f;
+            }
+            else if (speed >= 4.6f)
+            {
+                animation.dictionary = "move_m@gangster@generic";
+                animation.name = "sprint";
+                animation.speed = speed / 6.63f;
+            }
+            if (animation.name != lastAnimation.name || ped.Speed == 0)
+            {
+                if (!lastAnimation.IsEmpty())
+                    ped.Task.ClearAnimation(lastAnimation.dictionary, lastAnimation.name);
+                ped.Task.PlayAnimation(animation.dictionary, animation.name, 8.0f, -8.0f, -1,
+                    AnimationFlags.Loop | AnimationFlags.AllowRotation, animation.speed);
+                lastAnimation.dictionary = animation.dictionary;
+                lastAnimation.name = animation.name;
+            }
+            Function.Call(Hash.SET_ENTITY_ANIM_SPEED, ped, animation.dictionary, animation.name, animation.speed);
         }
     }
 
@@ -343,10 +442,13 @@ namespace ActivityGhosts
     public class FitActivityDecoder
     {
         public List<GeoPoint> pointList;
+        public System.DateTime startTime;
+        public Sport sport = Sport.Cycling;
 
         public FitActivityDecoder(string fileName)
         {
             pointList = new List<GeoPoint>();
+            startTime = new FileInfo(fileName).CreationTime;
             var fitSource = new FileStream(fileName, FileMode.Open);
             using (fitSource)
             {
@@ -355,6 +457,7 @@ namespace ActivityGhosts
                 decode.MesgEvent += mesgBroadcaster.OnMesg;
                 decode.MesgDefinitionEvent += mesgBroadcaster.OnMesgDefinition;
                 mesgBroadcaster.RecordMesgEvent += OnRecordMessage;
+                mesgBroadcaster.SessionMesgEvent += OnSessionMessage;
                 bool status = decode.IsFIT(fitSource);
                 status &= decode.CheckIntegrity(fitSource);
                 if (status)
@@ -366,14 +469,21 @@ namespace ActivityGhosts
         private void OnRecordMessage(object sender, MesgEventArgs e)
         {
             var recordMessage = (RecordMesg)e.mesg;
-            float s = recordMessage.GetSpeed() == null ? 0 : (float)recordMessage.GetSpeed();
-            if (s > 0)
+            float s = recordMessage.GetSpeed() ?? 0f;
+            if (s > 0f)
             {
                 PointF from = new PointF(SemicirclesToDeg(recordMessage.GetPositionLat()), SemicirclesToDeg(recordMessage.GetPositionLong()));
                 double dist = Distance(from, ActivityGhosts.initialGPSPoint);
                 double bearing = -1 * Bearing(from, ActivityGhosts.initialGPSPoint);
                 pointList.Add(new GeoPoint((float)(dist * Math.Cos(bearing)), (float)(dist * Math.Sin(bearing)), s));
             }
+        }
+
+        private void OnSessionMessage(object sender, MesgEventArgs e)
+        {
+            var sessionMessage = (SessionMesg)e.mesg;
+            startTime = sessionMessage.GetStartTime().GetDateTime();
+            sport = sessionMessage.GetSport() ?? Sport.Cycling;
         }
 
         private double Distance(PointF from, PointF to)
