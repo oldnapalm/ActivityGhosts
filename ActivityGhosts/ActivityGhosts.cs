@@ -21,6 +21,7 @@ namespace ActivityGhosts
         private Blip start;
         private int lastTime;
         private Keys menuKey;
+        private Keys loadKey;
         public static PointF initialGPSPoint;
         public static int opacity;
         private bool showDate;
@@ -93,29 +94,34 @@ namespace ActivityGhosts
                 {
                     FitActivityDecoder fit = new FitActivityDecoder(file.FullName);
                     List<GeoPoint> points = fit.pointList;
-                    if (points.Count > 1)
+                    if (points.Count > 1 && Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
                     {
-                        if (Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
-                        {
-                            int offset = ghosts.Count / 2 + 1;
-                            if (ghosts.Count % 2 == 0)
-                                offset *= -1;
-                            points[0].Lat += offset;
-                            float h = Game.Player.Character.Heading;
-                            if ((h > 90f && h < 180f) || (h > 270f && h < 360f))
-                                points[0].Long -= offset;
-                            else
-                                points[0].Long += offset;
-                            string span;
-                            var seconds = (System.DateTime.UtcNow - fit.startTime).TotalSeconds;
-                            if (seconds < 7200) span = $"{seconds / 60:N0} minutes";
-                            else if (seconds < 172800) span = $"{seconds / 3600:N0} hours";
-                            else if (seconds < 1209600) span = $"{seconds / 86400:N0} days";
-                            else if (seconds < 5259492) span = $"{seconds / 604800:N0} weeks";
-                            else span = $"{seconds / 2629746:N0} months";
-                            ghosts.Add(new Ghost(points, fit.sport, span));
-                        }
+                        int offset = ghosts.Count / 2 + 1;
+                        if (ghosts.Count % 2 == 0)
+                            offset *= -1;
+                        points[0].Lat += offset;
+                        float h = Game.Player.Character.Heading;
+                        if ((h > 90f && h < 180f) || (h > 270f && h < 360f))
+                            points[0].Long -= offset;
+                        else
+                            points[0].Long += offset;
+                        string span;
+                        var seconds = (System.DateTime.UtcNow - fit.startTime).TotalSeconds;
+                        if (seconds < 7200) span = $"{seconds / 60:N0} minutes";
+                        else if (seconds < 172800) span = $"{seconds / 3600:N0} hours";
+                        else if (seconds < 1209600) span = $"{seconds / 86400:N0} days";
+                        else if (seconds < 5259492) span = $"{seconds / 604800:N0} weeks";
+                        else span = $"{seconds / 2629746:N0} months";
+                        ghosts.Add(new Ghost(points, fit.sport, span));
                     }
+                }
+                if (ghosts.Count > 0)
+                {
+                    start = World.CreateBlip(Game.Player.Character.Position);
+                    start.Sprite = BlipSprite.RaceBike;
+                    loadMenuItem.Enabled = false;
+                    regroupMenuItem.Enabled = true;
+                    deleteMenuItem.Enabled = true;
                 }
             }
             Notification.Show($"{ghosts.Count} ghosts loaded");
@@ -126,13 +132,14 @@ namespace ActivityGhosts
             CultureInfo.CurrentCulture = new CultureInfo("", false);
             ScriptSettings settings = ScriptSettings.Load(@".\Scripts\ActivityGhosts.ini");
             menuKey = (Keys)Enum.Parse(typeof(Keys), settings.GetValue("Main", "MenuKey", "F8"), true);
+            loadKey = (Keys)Enum.Parse(typeof(Keys), settings.GetValue("Main", "LoadKey", "G"), true);
             float initialGPSPointLat = settings.GetValue("Main", "InitialGPSPointLat", -19.10637f);
             float initialGPSPointLong = settings.GetValue("Main", "InitialGPSPointLong", -169.871f);
             initialGPSPoint = new PointF(initialGPSPointLat, initialGPSPointLong);
-            opacity = settings.GetValue("Main", "Opacity", 50);
-            if (opacity < 0) opacity = 0;
-            if (opacity > 100) opacity = 100;
-            opacity *= 255 / 100;
+            opacity = settings.GetValue("Main", "Opacity", 5);
+            if (opacity < 1) opacity = 1;
+            if (opacity > 5) opacity = 5;
+            opacity *= 51;
             showDate = settings.GetValue("Main", "ShowDate", true);
         }
 
@@ -149,14 +156,6 @@ namespace ActivityGhosts
             loadMenuItem.Activated += (sender, itemArgs) =>
             {
                 LoadGhosts();
-                if (ghosts.Count > 0)
-                {
-                    start = World.CreateBlip(Game.Player.Character.Position);
-                    start.Sprite = BlipSprite.RaceBike;
-                    loadMenuItem.Enabled = false;
-                    regroupMenuItem.Enabled = true;
-                    deleteMenuItem.Enabled = true;
-                }
                 mainMenu.Visible = false;
             };
             regroupMenuItem = new NativeItem("Regroup", "Regroup ghosts")
@@ -188,6 +187,13 @@ namespace ActivityGhosts
             {
                 if (e.KeyCode == menuKey)
                     mainMenu.Visible = !mainMenu.Visible;
+                else if (e.KeyCode == loadKey)
+                {
+                    if (ghosts.Count == 0)
+                        LoadGhosts();
+                    else
+                        RegroupGhosts();
+                }
             };
         }
     }
