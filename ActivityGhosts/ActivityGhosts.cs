@@ -105,14 +105,7 @@ namespace ActivityGhosts
                             points[0].Long -= offset;
                         else
                             points[0].Long += offset;
-                        string span;
-                        var seconds = (System.DateTime.UtcNow - fit.startTime).TotalSeconds;
-                        if (seconds < 7200) span = $"{seconds / 60:N0} minutes";
-                        else if (seconds < 172800) span = $"{seconds / 3600:N0} hours";
-                        else if (seconds < 1209600) span = $"{seconds / 86400:N0} days";
-                        else if (seconds < 5259492) span = $"{seconds / 604800:N0} weeks";
-                        else span = $"{seconds / 2629746:N0} months";
-                        ghosts.Add(new Ghost(points, fit.sport, span));
+                        ghosts.Add(new Ghost(points, fit.sport, fit.startTime));
                     }
                 }
                 if (ghosts.Count > 0)
@@ -225,7 +218,7 @@ namespace ActivityGhosts
 
         private readonly string[] availableRunners = { "a_m_y_runner_01", "a_m_y_runner_02" };
 
-        public Ghost(List<GeoPoint> pointList, Sport type, string span)
+        public Ghost(List<GeoPoint> pointList, Sport type, System.DateTime startTime)
         {
             points = pointList;
             sport = type;
@@ -271,7 +264,7 @@ namespace ActivityGhosts
                 blip.Name = "Ghost (active)";
                 blip.Color = BlipColor.WhiteNotPure;
             }
-            date = new TextElement($"{span} ago", new PointF(0, 0), 1f, Color.WhiteSmoke, GTA.UI.Font.ChaletLondon, Alignment.Center, false, true);
+            date = new TextElement(TimeSince(startTime), new PointF(0, 0), 1f, Color.WhiteSmoke, GTA.UI.Font.ChaletLondon, Alignment.Center, false, true);
         }
 
         public void Update()
@@ -428,6 +421,41 @@ namespace ActivityGhosts
                 lastAnimation.name = animation.name;
             }
             Function.Call(Hash.SET_ENTITY_ANIM_SPEED, ped, animation.dictionary, animation.name, animation.speed);
+        }
+
+        private string TimeSince(System.DateTime startTime)
+        {
+            var seconds = (System.DateTime.UtcNow - startTime).TotalSeconds;
+            var interval = Math.Floor(seconds / 31536000);
+            string intervalType;
+            if (interval > 0) intervalType = "year";
+            else
+            {
+                interval = Math.Floor(seconds / 2592000);
+                if (interval > 0) intervalType = "month";
+                else
+                {
+                    interval = Math.Floor(seconds / 604800);
+                    if (interval > 0) intervalType = "week";
+                    else
+                    {
+                        interval = Math.Floor(seconds / 86400);
+                        if (interval > 0) intervalType = "day";
+                        else
+                        {
+                            interval = Math.Floor(seconds / 3600);
+                            if (interval > 0) intervalType = "hour";
+                            else
+                            {
+                                interval = Math.Floor(seconds / 60);
+                                if (interval > 0) intervalType = "minute";
+                                else return "Just now";
+                            }
+                        }
+                    }
+                }
+            }
+            return $"{interval} {intervalType}{(interval > 1 ? "s" : "")} ago";
         }
     }
 
