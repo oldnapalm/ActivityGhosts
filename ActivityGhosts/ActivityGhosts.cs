@@ -205,12 +205,12 @@ namespace ActivityGhosts
         private readonly Animation lastAnimation = new Animation();
 
         private readonly VehicleDrivingFlags customDrivingStyle = VehicleDrivingFlags.AllowGoingWrongWay |
-                                                                  VehicleDrivingFlags.AllowMedianCrossing |
-                                                                  VehicleDrivingFlags.AvoidEmptyVehicles |
-                                                                  VehicleDrivingFlags.AvoidObjects |
-                                                                  VehicleDrivingFlags.AvoidPeds |
-                                                                  VehicleDrivingFlags.AvoidVehicles |
-                                                                  VehicleDrivingFlags.IgnorePathFinding;
+                                                                  VehicleDrivingFlags.UseShortCutLinks |
+                                                                  VehicleDrivingFlags.SteerAroundStationaryVehicles |
+                                                                  VehicleDrivingFlags.SteerAroundObjects |
+                                                                  VehicleDrivingFlags.SteerAroundPeds |
+                                                                  VehicleDrivingFlags.SwerveAroundAllVehicles |
+                                                                  VehicleDrivingFlags.ForceStraightLine;
 
         private readonly string[] availableBicycles = { "BMX", "CRUISER", "FIXTER", "SCORCHER", "TRIBIKE", "TRIBIKE2", "TRIBIKE3" };
 
@@ -416,7 +416,7 @@ namespace ActivityGhosts
                 if (!lastAnimation.IsEmpty())
                     ped.Task.ClearAnimation(lastAnimation.dictionary, lastAnimation.name);
                 ped.Task.PlayAnimation(animation.dictionary, animation.name, 8.0f, -8.0f, -1,
-                    AnimationFlags.Loop | AnimationFlags.AllowRotation, animation.speed);
+                    AnimationFlags.Loop | AnimationFlags.Secondary, animation.speed);
                 lastAnimation.dictionary = animation.dictionary;
                 lastAnimation.name = animation.name;
             }
