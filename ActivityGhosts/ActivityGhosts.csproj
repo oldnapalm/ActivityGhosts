@@ -37,6 +37,9 @@
     <Reference Include="LemonUI.SHVDN3">
       <HintPath>D:\Grand Theft Auto V\Scripts\LemonUI.SHVDN3.dll</HintPath>
     </Reference>
+    <Reference Include="LiteDB, Version=5.0.16.0, Culture=neutral, PublicKeyToken=4ee40123013c9f27, processorArchitecture=MSIL">
+      <HintPath>..\packages\LiteDB.5.0.16\lib\net45\LiteDB.dll</HintPath>
+    </Reference>
     <Reference Include="ScriptHookVDotNet3">
       <HintPath>D:\Grand Theft Auto V\ScriptHookVDotNet3.dll</HintPath>
     </Reference>
@@ -47,6 +50,9 @@
   <ItemGroup>
     <Compile Include="ActivityGhosts.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

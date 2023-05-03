@@ -12,6 +12,7 @@ using GTA.Native;
 using GTA.UI;
 using LemonUI;
 using LemonUI.Menus;
+using LiteDB;
 
 namespace ActivityGhosts
 {
@@ -30,11 +31,17 @@ namespace ActivityGhosts
         private NativeItem loadMenuItem;
         private NativeItem regroupMenuItem;
         private NativeItem deleteMenuItem;
+        private readonly string gtaFolder;
+        private static LiteDatabase db;
+        private static ILiteCollection<ActivityFile> activityFiles;
 
         public ActivityGhosts()
         {
             ghosts = new List<Ghost>();
             lastTime = Environment.TickCount;
+            gtaFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Rockstar Games", "GTA V");
+            db = new LiteDatabase(Path.Combine(gtaFolder, "ModSettings", "ActivityGhosts.db"));
+            activityFiles = db.GetCollection<ActivityFile>();
             LoadSettings();
             CreateMenu();
             Tick += OnTick;
@@ -85,29 +92,39 @@ namespace ActivityGhosts
 
         private void LoadGhosts()
         {
-            string activitiesPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Rockstar Games\\GTA V\\Activities";
+            string activitiesPath = Path.Combine(gtaFolder, "Activities");
             if (Directory.Exists(activitiesPath))
             {
-                DirectoryInfo dir = new DirectoryInfo(activitiesPath);
-                FileInfo[] files = dir.GetFiles("*.fit");
-                foreach (FileInfo file in files)
-                {
-                    FitActivityDecoder fit = new FitActivityDecoder(file.FullName);
-                    List<GeoPoint> points = fit.pointList;
-                    if (points.Count > 1 && Game.Player.Character.Position.DistanceTo2D(new Vector2(points[0].Lat, points[0].Long)) < 50f)
+                foreach (var file in new DirectoryInfo(activitiesPath).GetFiles("*.fit"))
+                    if (activityFiles.Find(x => x.Name == file.Name).FirstOrDefault() == null)
                     {
-                        int offset = ghosts.Count / 2 + 1;
-                        if (ghosts.Count % 2 == 0)
-                            offset *= -1;
-                        points[0].Lat += offset;
-                        float h = Game.Player.Character.Heading;
-                        if ((h > 90f && h < 180f) || (h > 270f && h < 360f))
-                            points[0].Long -= offset;
-                        else
-                            points[0].Long += offset;
-                        ghosts.Add(new Ghost(points, fit.sport, fit.startTime));
+                        var points = new FitActivityDecoder(file.FullName).pointList;
+                        if (points.Count > 1)
+                            activityFiles.Insert(new ActivityFile() { Name = file.Name, Lat = points[0].Lat, Long = points[0].Long });
                     }
-                }
+                foreach (var file in activityFiles.FindAll())
+                    if (Game.Player.Character.Position.DistanceTo2D(new Vector2(file.Lat, file.Long)) < 50f)
+                    {
+                        string fullName = Path.Combine(activitiesPath, file.Name);
+                        if (System.IO.File.Exists(fullName))
+                        {
+                            var fit = new FitActivityDecoder(fullName);
+                            if (fit.pointList.Count > 1)
+                            {
+                                int offset = ghosts.Count / 2 + 1;
+                                if (ghosts.Count % 2 == 0)
+                                    offset *= -1;
+                                float h = Game.Player.Character.Heading;
+                                if ((h > 45f && h < 135f) || (h > 225f && h < 315f))
+                                    fit.pointList[0].Long += offset;
+                                else
+                                    fit.pointList[0].Lat += offset;
+                                ghosts.Add(new Ghost(fit.pointList, fit.sport, fit.startTime));
+                            }
+                        }
+                        else
+                            activityFiles.Delete(file.Id);
+                    }
                 if (ghosts.Count > 0)
                 {
                     start = World.CreateBlip(Game.Player.Character.Position);
@@ -552,5 +569,13 @@ namespace ActivityGhosts
         {
             return angleDeg * Math.PI / 180.0f;
         }
+    }
+
+    public class ActivityFile
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public float Lat { get; set; }
+        public float Long { get; set; }
     }
 }
