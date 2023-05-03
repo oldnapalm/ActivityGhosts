@@ -3,7 +3,7 @@
 Basic activity ghosts mod for [GTBikeV](https://www.gtbikev.com/)
 
 ## Installation
-- Put `ActivityGhosts.dll` and `ActivityGhosts.ini` in the `Scripts` folder
+- Put `ActivityGhosts.dll`, `ActivityGhosts.ini` and `LiteDB.dll` in the `Scripts` folder
 - Optionally, open `ActivityGhosts.ini` and edit preferences
   - **MenuKey**: key to open the menu
   - **LoadKey**: key to load or regroup ghosts
@@ -26,3 +26,4 @@ https://github.com/oldnapalm/ActivityGhosts/releases/latest
 - [ScriptHookVDotNet](https://github.com/crosire/scripthookvdotnet)
 - [LemonUI](https://github.com/justalemon/LemonUI)
 - [FIT](https://developer.garmin.com/fit/download/)
+- [LiteDB](https://github.com/mbdavid/LiteDB)
